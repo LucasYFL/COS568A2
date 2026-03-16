@@ -22,6 +22,7 @@ import glob
 import logging
 import os
 import random
+import time
 
 import numpy as np
 import torch
@@ -82,6 +83,14 @@ def train(args, train_dataset, model, tokenizer):
     args.train_batch_size = args.per_device_train_batch_size
     train_sampler = DistributedSampler(train_dataset, num_replicas=args.world_size, rank=args.local_rank) if args.local_rank != -1 else RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size)
+    rank = args.local_rank if args.local_rank != -1 else 0
+    log_dir = os.path.join("./", "training_logs")
+    os.makedirs(log_dir, exist_ok=True)
+    loss_log_file = os.path.join(log_dir, "loss_rank_{}.tsv".format(rank))
+    timing_log_file = os.path.join(log_dir, "timing_rank.txt")
+    with open(loss_log_file, "w") as writer:
+        writer.write("global_step\tepoch\tstep\tloss\n")
+    iteration_times = []
 
     if args.max_steps > 0:
         t_total = args.max_steps
@@ -119,9 +128,10 @@ def train(args, train_dataset, model, tokenizer):
     model.zero_grad()
     train_iterator = trange(int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0])
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
-    for _ in train_iterator:
+    for epoch in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
+            iteration_start_time = time.perf_counter()
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
             inputs = {'input_ids':      batch[0],
@@ -159,6 +169,10 @@ def train(args, train_dataset, model, tokenizer):
                 model.zero_grad()
                 global_step += 1
 
+            iteration_times.append(time.perf_counter() - iteration_start_time)
+            with open(loss_log_file, "a") as writer:
+                writer.write("{}\t{}\t{}\t{:.10f}\n".format(global_step, epoch + 1, step + 1, loss.item()))
+
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
                 break
@@ -170,6 +184,18 @@ def train(args, train_dataset, model, tokenizer):
         # TODO(cos568): call evaluate() here to get the model performance after every epoch. (expect one line of code)
         evaluate(args, model, tokenizer, prefix=global_step) if args.local_rank in [-1, 0] else None
         ##################################################
+    if rank == 0:
+        if len(iteration_times) > 1:
+            average_iteration_time = sum(iteration_times[1:]) / len(iteration_times[1:])
+            with open(timing_log_file, "w") as writer:
+                writer.write("rank = {}\n".format(rank))
+                writer.write("measured_iterations = {}\n".format(len(iteration_times) - 1))
+                writer.write("average_iteration_time_seconds = {:.10f}\n".format(average_iteration_time))
+        else:
+            with open(timing_log_file, "w") as writer:
+                writer.write("rank = {}\n".format(rank))
+                writer.write("measured_iterations = 0\n")
+                writer.write("average_iteration_time_seconds = N/A\n")
 
     return global_step, tr_loss / global_step
 

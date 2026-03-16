@@ -84,6 +84,7 @@ def sync_gradients_gather_scatter(model, world_size):
             averaged_grad.div_(world_size)
             scattered_grads = [averaged_grad.clone() for _ in range(world_size)]
         else:
+            dist.gather(grad, dst=0)
             scattered_grads = None
 
         synced_grad = torch.zeros_like(grad)

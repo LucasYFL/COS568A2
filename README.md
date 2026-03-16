@@ -92,6 +92,29 @@ python run_glue.py [other input args] --master_ip $ip_address$ --master_port $po
 ```
 Here `local_rank=0, 1, 2, 3`, which corresponds to your node ID. We recommend using `tmux` to keep the session persistent.
 
+```shell
+export GLUE_DIR=$HOME/glue_data
+export TASK_NAME=RTE
+
+python3 task2a/run_glue.py \
+  --model_type bert \
+  --model_name_or_path bert-base-cased \
+  --task_name $TASK_NAME \
+  --do_train \
+  --do_eval \
+  --data_dir $GLUE_DIR/$TASK_NAME \
+  --max_seq_length 128 \
+  --per_device_train_batch_size 16 \
+  --learning_rate 2e-5 \
+  --num_train_epochs 3 \
+  --output_dir /tmp/$TASK_NAME/ \
+  --overwrite_output_dir
+  --master_ip 10.10.1.2 \
+  --master_port 12345 \
+  --world_size 4 \
+  --local_rank 0
+```
+
 
 ### Part 2(b): Gradient Synchronization with all_reduce
 

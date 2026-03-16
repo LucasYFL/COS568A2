@@ -108,7 +108,7 @@ python3 task2a/run_glue.py \
   --learning_rate 2e-5 \
   --num_train_epochs 3 \
   --output_dir /tmp/$TASK_NAME/ \
-  --overwrite_output_dir
+  --overwrite_output_dir \
   --master_ip 10.10.1.2 \
   --master_port 12345 \
   --world_size 4 \

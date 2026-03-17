@@ -23,7 +23,7 @@ import logging
 import os
 import random
 import time
-import sys
+
 import numpy as np
 import torch
 import torch.distributed as dist

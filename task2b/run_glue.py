@@ -31,6 +31,8 @@ from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
+from torch.profiler import profile, ProfilerActivity, schedule
+
 
 # import a previous version of the HuggingFace Transformers package
 from pytorch_transformers import (WEIGHTS_NAME, BertConfig,
@@ -77,6 +79,54 @@ def sync_gradients_all_reduce(model, world_size):
         param.grad.data.div_(world_size)
 
 
+def benchmark(args, model,optimizer, scheduler, dataloader, step=3, warmup=1):
+    model.train()
+    trace_addr = f"trace.json"
+
+    sched = schedule(warmup=warmup, active=step, wait=0)
+    with profile(
+        activities=[ProfilerActivity.CPU],
+        schedule=sched,
+        on_trace_ready=lambda p: p.export_chrome_trace(trace_addr),
+    ) as prof:
+        for step, batch in enumerate(dataloader):
+            batch = tuple(t.to(args.device) for t in batch)
+            inputs = {'input_ids':      batch[0],
+                      'attention_mask': batch[1],
+                      'token_type_ids': batch[2] if args.model_type in ['bert', 'xlnet'] else None,  # XLM don't use segment_ids
+                      'labels':         batch[3]}
+            outputs = model(**inputs)
+            loss = outputs[0]  # model outputs are always tuple in pytorch-transformers (see doc)
+
+            if args.gradient_accumulation_steps > 1:
+                loss = loss / args.gradient_accumulation_steps
+
+            if args.fp16:
+                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                ##################################################
+                # TODO(cos568): perform backward pass here (expect one line of code)
+                loss.backward()
+                ##################################################
+            if args.local_rank != -1:
+                sync_gradients_all_reduce(model, args.world_size)
+            if args.fp16:
+                torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), args.max_grad_norm)
+            else:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+
+            if (step + 1) % args.gradient_accumulation_steps == 0:
+                ##################################################
+                # TODO(cos568): perform a single optimization step (parameter update) by invoking the optimizer (expect one line of code)
+                optimizer.step()
+                ##################################################
+                scheduler.step() # Update learning rate schedule
+                model.zero_grad()
+
+            prof.step()
+
+    print(f'trace file saved at {trace_addr}')
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
 
@@ -126,6 +176,9 @@ def train(args, train_dataset, model, tokenizer):
     global_step = 0
     tr_loss, logging_loss = 0.0, 0.0
     model.zero_grad()
+    if args.save_trace:
+        benchmark(args, model, optimizer, scheduler, train_dataloader)
+        return None, None
     train_iterator = trange(int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0])
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
     for epoch in train_iterator:
@@ -393,6 +446,8 @@ def main():
                         help="Master node port for distributed training.")
     parser.add_argument("--world_size", default=1, type=int,
                         help="Number of distributed workers.")
+    parser.add_argument('--save-trace', action='store_true', default=False,
+                        help='whether to save the PyTorch trace (default: False)')
     args = parser.parse_args()
 
     if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train and not args.overwrite_output_dir:

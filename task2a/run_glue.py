@@ -139,8 +139,8 @@ def benchmark(args, model,optimizer, scheduler, dataloader, step=3, warmup=1):
                 model.zero_grad()
 
             prof.step()
+
     print(f'trace file saved at {trace_addr}')
-    sys.exit(0)
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
 
@@ -194,6 +194,7 @@ def train(args, train_dataset, model, tokenizer):
     set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
     if args.save_trace:
         benchmark(args, model, optimizer, scheduler, train_dataloader)
+        return None, None
     for epoch in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):

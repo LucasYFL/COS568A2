@@ -99,7 +99,7 @@ def benchmark(args, model,optimizer, scheduler, dataloader, step=3, warmup=1):
 
     sched = schedule(warmup=warmup, active=step, wait=0)
     with profile(
-        activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+        activities=[ProfilerActivity.CPU],
         schedule=sched,
         on_trace_ready=lambda p: p.export_chrome_trace(trace_addr),
     ) as prof:
@@ -130,7 +130,6 @@ def benchmark(args, model,optimizer, scheduler, dataloader, step=3, warmup=1):
             else:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
-            tr_loss += loss.item()
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 ##################################################
                 # TODO(cos568): perform a single optimization step (parameter update) by invoking the optimizer (expect one line of code)
@@ -138,7 +137,7 @@ def benchmark(args, model,optimizer, scheduler, dataloader, step=3, warmup=1):
                 ##################################################
                 scheduler.step() # Update learning rate schedule
                 model.zero_grad()
-                global_step += 1
+
             prof.step()
     print(f'trace file saved at {trace_addr}')
     sys.exit(0)

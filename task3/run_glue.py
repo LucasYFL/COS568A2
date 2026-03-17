@@ -112,6 +112,8 @@ def benchmark(args, model,optimizer, scheduler, dataloader, step=3, warmup=1):
                 model.zero_grad()
 
             prof.step()
+            if step >= (warmup + step):
+                break
 
     print(f'trace file saved at {trace_addr}')
 def train(args, train_dataset, model, tokenizer):

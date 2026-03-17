@@ -79,11 +79,11 @@ def sync_gradients_all_reduce(model, world_size):
         param.grad.data.div_(world_size)
 
 
-def benchmark(args, model,optimizer, scheduler, dataloader, step=3, warmup=1):
+def benchmark(args, model,optimizer, scheduler, dataloader, schedule_step=3, warmup=1):
     model.train()
     trace_addr = f"trace.json"
 
-    sched = schedule(warmup=warmup, active=step, wait=0)
+    sched = schedule(warmup=warmup, active=schedule_step, wait=0)
     with profile(
         activities=[ProfilerActivity.CPU],
         schedule=sched,
@@ -125,7 +125,7 @@ def benchmark(args, model,optimizer, scheduler, dataloader, step=3, warmup=1):
                 model.zero_grad()
 
             prof.step()
-            if step >= (warmup + step):
+            if step >= (warmup + schedule_step):
                 break
     print(f'trace file saved at {trace_addr}')
 def train(args, train_dataset, model, tokenizer):

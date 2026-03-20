@@ -253,18 +253,18 @@ def train(args, train_dataset, model, tokenizer):
         # TODO(cos568): call evaluate() here to get the model performance after every epoch. (expect one line of code)
         evaluate(args, model, tokenizer, prefix=global_step) if args.local_rank in [-1, 0] else None
         ##################################################
-    if rank == 0:
-        if len(iteration_times) > 1:
-            average_iteration_time = sum(iteration_times[1:]) / len(iteration_times[1:])
-            with open(timing_log_file, "w") as writer:
-                writer.write("rank = {}\n".format(rank))
-                writer.write("measured_iterations = {}\n".format(len(iteration_times) - 1))
-                writer.write("average_iteration_time_seconds = {:.10f}\n".format(average_iteration_time))
-        else:
-            with open(timing_log_file, "w") as writer:
-                writer.write("rank = {}\n".format(rank))
-                writer.write("measured_iterations = 0\n")
-                writer.write("average_iteration_time_seconds = N/A\n")
+
+    if len(iteration_times) > 1:
+        average_iteration_time = sum(iteration_times[1:]) / len(iteration_times[1:])
+        with open(timing_log_file, "w") as writer:
+            writer.write("rank = {}\n".format(rank))
+            writer.write("measured_iterations = {}\n".format(len(iteration_times) - 1))
+            writer.write("average_iteration_time_seconds = {:.10f}\n".format(average_iteration_time))
+    else:
+        with open(timing_log_file, "w") as writer:
+            writer.write("rank = {}\n".format(rank))
+            writer.write("measured_iterations = 0\n")
+            writer.write("average_iteration_time_seconds = N/A\n")
 
     return global_step, tr_loss / global_step
 
